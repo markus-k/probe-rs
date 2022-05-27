@@ -118,7 +118,7 @@ impl ProbeStatistics {
         }
     }
 
-    fn report_line_reset(&mut self) {
+    pub fn report_line_reset(&mut self) {
         self.num_line_resets += 1;
     }
 }
@@ -767,7 +767,8 @@ fn parse_swd_response(response: &[bool], direction: TransferDirection) -> Result
 
     // There are two idle bits and eight request bits,
     // the acknowledge comes directly after.
-    let ack_offset = 2 + 8;
+    // why was this missing the +1 from TRN?
+    let ack_offset = 2 + 8 + 1;
 
     // Get the ack.
     let ack = &response[ack_offset..ack_offset + 3];
@@ -921,9 +922,50 @@ impl<Probe: DebugProbe + RawProtocolIo + JTAGAccess + 'static> RawDapAccess for 
     fn select_dp(&mut self, dp: DpAddress) -> Result<(), DebugProbeError> {
         match dp {
             DpAddress::Default => Ok(()), // nop
-            DpAddress::Multidrop(_) => Err(DebugProbeError::ProbeSpecific(
-                anyhow::anyhow!("JLink doesn't support multidrop SWD yet").into(),
-            )),
+            DpAddress::Multidrop(targetsel) => {
+                for _i in 0..5 {
+                    // dormant-to-swd + line reset
+
+                    let alert_seq = [
+                        0x92_u8, 0xf3, 0x09, 0x62, 0x95, 0x2d, 0x85, 0x86, 0xe9, 0xaf, 0xdd, 0xe3,
+                        0xa2, 0x0e, 0xbc, 0x19,
+                    ];
+                    for byte in alert_seq {
+                        self.swj_sequence(8, byte as u64)?;
+                    }
+
+                    let activation_seq = [0xa0_u8, 0xf1, 0xff];
+                    for byte in activation_seq {
+                        self.swj_sequence(8, byte as u64)?;
+                    }
+
+                    self.swj_sequence(50, 0x7FFFFFFFFFFFF)?;
+
+                    // TARGETSEL write.
+                    // The TARGETSEL write is not ACKed by design. We can't use a normal register write
+                    // because many probes don't even send the data phase when NAK.
+                    let parity = targetsel.count_ones() % 2;
+                    let data = &((parity as u64) << 45 | (targetsel as u64) << 13 | 0x1f99)
+                        .to_le_bytes()[..6];
+                    for &byte in data {
+                        self.swj_sequence(8, byte as u64)?;
+                    }
+
+                    // "A write to the TARGETSEL register must always be followed by a read of the DPIDR register or a line reset. If the
+                    // response to the DPIDR read is incorrect, or there is no response, the host must start the sequence again."
+                    match self.raw_read_register(PortType::DebugPort, 0) {
+                        Ok(res) => {
+                            log::debug!("DPIDR read {:08x}", res);
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            log::debug!("DPIDR read failed, retrying. Error: {:?}", e);
+                        }
+                    }
+                }
+                log::warn!("Giving up on TARGETSEL, too many retries.");
+                Err(DapError::NoAcknowledge.into())
+            }
         }
     }
 

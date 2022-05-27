@@ -16,7 +16,7 @@ keywords = ["embedded"]
 license = "MIT OR Apache-2.0"
 
 [features]
-default = ["builtin-targets", "vendored-libusb"]
+default = ["builtin-targets", "vendored-libusb", "gpio"]
 
 vendored-libusb = ["rusb/vendored"]
 
@@ -25,6 +25,9 @@ builtin-targets = []
 
 ftdi = ["libftdi1-sys"]
 ftdi-vendored = ["libftdi1-sys/vendored", "libftdi1-sys/libusb1-sys"]
+
+gpio = ["spin_sleep"]
+gpio-raspberrypi = ["rppal"]
 
 [dependencies]
 anyhow = "1.0.31"
@@ -64,6 +67,8 @@ thousands = "0.2.0"
 # optional
 hexdump = { version = "0.1.0", optional = true }
 libftdi1-sys = { version = "1.1.2", optional = true }
+spin_sleep = { version = "1", optional = true }
+rppal = { version = "0.13.1", optional = true }
 
 # path
 probe-rs-target = { path = "../probe-rs-target", version = "0.12.0", features = [

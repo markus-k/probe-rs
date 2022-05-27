@@ -23,7 +23,7 @@ use crate::{
 
 use self::arm::{ProbeStatistics, SwdSettings};
 
-mod arm;
+pub mod arm;
 
 const SWO_BUFFER_SIZE: u16 = 128;
 

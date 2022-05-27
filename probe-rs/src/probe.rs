@@ -3,6 +3,8 @@ pub(crate) mod espusbjtag;
 pub(crate) mod fake_probe;
 #[cfg(feature = "ftdi")]
 pub(crate) mod ftdi;
+#[cfg(feature = "gpio")]
+pub(crate) mod gpio;
 pub(crate) mod jlink;
 pub(crate) mod stlink;
 
@@ -27,6 +29,7 @@ use jlink::list_jlink_devices;
 use std::{convert::TryFrom, fmt};
 
 use self::espusbjtag::list_espjtag_devices;
+use self::gpio::list_gpio_devices;
 
 /// Used to log warnings when the measured target voltage is
 /// lower than 1.4V, if at all measureable.
@@ -258,6 +261,8 @@ impl Probe {
 
         list.extend(list_espjtag_devices());
 
+        list.extend(list_gpio_devices());
+
         list
     }
 
@@ -286,7 +291,12 @@ impl Probe {
             Err(DebugProbeError::ProbeCouldNotBeCreated(ProbeCreationError::NotFound)) => {}
             Err(e) => return Err(e),
         };
-        match espusbjtag::EspUsbJtag::new_from_selector(selector) {
+        match espusbjtag::EspUsbJtag::new_from_selector(selector.clone()) {
+            Ok(link) => return Ok(Probe::from_specific_probe(link)),
+            Err(DebugProbeError::ProbeCouldNotBeCreated(ProbeCreationError::NotFound)) => {}
+            Err(e) => return Err(e),
+        };
+        match gpio::GpioDap::new_from_selector(selector) {
             Ok(link) => return Ok(Probe::from_specific_probe(link)),
             Err(DebugProbeError::ProbeCouldNotBeCreated(ProbeCreationError::NotFound)) => {}
             Err(e) => return Err(e),
@@ -631,6 +641,8 @@ pub enum DebugProbeType {
     JLink,
     /// Built in RISC-V ESP JTAG debug probe
     EspJtag,
+    /// GPIO bitbanging
+    Gpio,
 }
 
 /// Gathers some information about a debug probe which was found during a scan.
